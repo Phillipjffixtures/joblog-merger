@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Log Merger · Shared</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --navy: #1F3864;
+    --teal: #2E75B6;
+    --teal-light: #BDD7EE;
+    --green: #375623;
+    --green-light: #E2EFDA;
+    --gold: #C9A227;
+    --gold-light: #FFF2CC;
+    --orange: #ED7D31;
+    --red: #C00000;
+    --gray-100: #F2F2F2;
+    --gray-200: #D9D9D9;
+    --gray-500: #595959;
+    --white: #FFFFFF;
+    --madix-blue: #1F5C99;
+    --madix-light: #DAEEF3;
+    --mill-green: #375623;
+    --mill-light: #EBF1DE;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Calibri, sans-serif;
+    background: #F0F4F8;
+    color: #1a1a2e;
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--navy);
+    padding: 0 32px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--teal);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: white; font-weight: 700;
+  }
+  .logo-text { color: white; font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .logo-sub { color: rgba(255,255,255,0.55); font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  .header-stats {
+    display: flex; gap: 24px;
+  }
+  .hstat { text-align: right; }
+  .hstat-num { color: white; font-size: 22px; font-weight: 700; line-height: 1; }
+  .hstat-label { color: rgba(255,255,255,0.55); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+  .section-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--gray-500); margin-bottom: 12px;
+  }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed var(--teal);
+    border-radius: 12px;
+    background: white;
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 24px;
+    position: relative;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    background: #EEF5FB;
+    border-color: var(--navy);
+  }
+  .dropzone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 40px; margin-bottom: 12px; }
+  .drop-title { font-size: 18px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+  .drop-sub { font-size: 13px; color: var(--gray-500); }
+  .drop-hint {
+    margin-top: 16px; font-size: 12px; color: var(--teal);
+    background: var(--teal-light); padding: 6px 14px; border-radius: 20px; display: inline-block;
+  }
+
+  /* File list */
+  .file-list { margin-bottom: 24px; }
+  .file-item {
+    display: flex; align-items: center; gap: 12px;
+    background: white; border: 1px solid var(--gray-200);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;
+    animation: slideIn 0.2s ease;
+  }
+  @keyframes slideIn { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform: none; } }
+  .file-icon { font-size: 20px; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-meta { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+  .file-status {
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px; white-space: nowrap;
+  }
+  .status-pending { background: var(--gold-light); color: var(--gold); }
+  .status-processing { background: var(--teal-light); color: var(--teal); }
+  .status-done { background: var(--green-light); color: var(--green); }
+  .status-error { background: #FFF0F0; color: var(--red); }
+  .file-remove { background: none; border: none; cursor: pointer; color: var(--gray-500); font-size: 18px; padding: 4px; border-radius: 4px; }
+  .file-remove:hover { color: var(--red); background: #FFF0F0; }
+
+  /* Stats grid */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px;
+  }
+  .stat-card {
+    background: white; border: 1px solid var(--gray-200);
+    border-radius: 10px; padding: 14px 14px;
+    border-top: 3px solid var(--teal);
+  }
+  .stat-num { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1; }
+  .stat-label { font-size: 11px; color: var(--gray-500); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Breakdown tables */
+  .breakdown-card {
+    background: white; border: 1px solid var(--gray-200); border-radius: 10px; overflow: hidden;
+  }
+  .breakdown-header {
+    background: var(--navy); color: white; font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px;
+  }
+  .breakdown-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+  .breakdown-table th {
+    background: var(--gray-100); padding: 7px 12px; text-align: left;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--gray-500); border-bottom: 1px solid var(--gray-200);
+  }
+  .breakdown-table td { padding: 7px 12px; border-bottom: 1px solid var(--gray-100); }
+  .breakdown-table tr:last-child td { border-bottom: none; }
+  .breakdown-table tr:hover td { background: var(--gray-100); }
+  .badge {
+    font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  }
+  .badge-madix { background: var(--madix-light); color: var(--madix-blue); }
+  .badge-mill { background: var(--mill-light); color: var(--mill-green); }
+  .badge-both { background: var(--gold-light); color: var(--gold); }
+
+  /* Action bar */
+  .action-bar {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; transition: all 0.15s; text-decoration: none;
+  }
+  .btn-primary { background: var(--teal); color: white; }
+  .btn-primary:hover { background: var(--navy); }
+  .btn-primary:disabled { background: var(--gray-200); color: var(--gray-500); cursor: not-allowed; }
+  .btn-danger { background: white; color: var(--red); border: 1px solid var(--red); }
+  .btn-danger:hover { background: #FFF0F0; }
+  .btn-success { background: var(--green); color: white; }
+  .btn-success:hover { background: #2a4019; }
+  .btn-success:disabled { background: var(--gray-200); color: var(--gray-500); cursor: not-allowed; }
+
+  .progress-wrap { flex: 1; }
+  .progress-bar-bg { height: 6px; background: var(--gray-200); border-radius: 3px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--teal); border-radius: 3px; transition: width 0.3s; }
+  .progress-label { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+
+  .vert-chip {
+    font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px;
+    background: var(--teal-light); color: var(--teal); white-space: nowrap;
+  }
+
+  /* Log */
+  .log-box {
+    background: #1a1a2e; border-radius: 8px; padding: 14px 16px;
+    font-family: 'Courier New', monospace; font-size: 12px; color: #a8d8a8;
+    max-height: 160px; overflow-y: auto; margin-bottom: 16px;
+  }
+  .log-line { margin-bottom: 3px; }
+  .log-line.info { color: #7fc8f8; }
+  .log-line.warn { color: #ffd700; }
+  .log-line.ok { color: #90EE90; }
+  .log-line.err { color: #ff7675; }
+
+  .empty-state {
+    text-align: center; padding: 48px 24px; color: var(--gray-500);
+  }
+  .empty-state-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-state-text { font-size: 15px; }
+
+  @media (max-width: 700px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .header-stats { display: none; }
+  }
+
+  /* Settings bar */
+  #settingsBar {
+    background: #16213a; border-bottom: 1px solid #0d1b2e;
+    padding: 8px 32px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  #settingsBar label {
+    font-size: 12px; font-weight: 700; color: #C9A227; text-transform: uppercase;
+    letter-spacing: 0.5px; white-space: nowrap;
+  }
+  #settingsBar input[type=text], #settingsBar input[type=password] {
+    padding: 5px 10px; border: 1px solid #2E4A7A; border-radius: 6px;
+    background: #0d1b2e; color: #e8f0fe; font-size: 12px;
+    font-family: 'Courier New', monospace;
+  }
+  #settingsBar input[type=text]:focus, #settingsBar input[type=password]:focus {
+    outline: none; border-color: #2E75B6;
+  }
+  #settingsBar input#sbApiKey { width: 280px; }
+  #settingsBar input#sbBinId  { width: 260px; }
+  .sb-btn {
+    padding: 5px 14px; border-radius: 6px; font-size: 12px; font-weight: 700;
+    cursor: pointer; border: none; white-space: nowrap;
+  }
+  .sb-btn-connect { background: #C9A227; color: #1a1a2e; }
+  .sb-btn-connect:hover { background: #e0b52e; }
+  .sb-btn-refresh { background: #2E75B6; color: white; }
+  .sb-btn-refresh:hover { background: #1F5C99; }
+  .sb-btn-toggle { background: transparent; color: #7fc8f8; border: 1px solid #2E4A7A; }
+  .sb-btn-toggle:hover { background: #0d1b2e; }
+  #sbStatus { font-size: 12px; font-family: 'Courier New', monospace; white-space: nowrap; }
+  #sbStatus.ok   { color: #90EE90; }
+  #sbStatus.warn { color: #ffd700; }
+  #sbStatus.err  { color: #ff7675; }
+  #sbStatus.off  { color: #888; }
+  .sb-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block;
+  }
+  .sb-dot.ok   { background: #90EE90; animation: pulse 2s infinite; }
+  .sb-dot.warn { background: #ffd700; }
+  .sb-dot.err  { background: #ff7675; }
+  .sb-dot.off  { background: #595959; }
+
+  /* Edit modal field styles */
+  .edit-label {
+    display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--gray-500); margin-bottom: 5px;
+  }
+  .edit-input {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--gray-200);
+    border-radius: 7px; font-size: 13px; color: #1a1a2e;
+    font-family: 'Segoe UI', Calibri, sans-serif;
+    background: white; box-sizing: border-box;
+  }
+  .edit-input:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 2px rgba(46,117,182,0.15); }
+  textarea.edit-input { padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">JL</div>
+    <div>
+      <div class="logo-text">Job Log Merger</div>
+      <div class="logo-sub">Madix &amp; Millworks · Data Consolidation Tool</div>
+    </div>
+  </div>
+  <div class="header-stats" id="headerStats">
+    <div class="hstat">
+      <div class="hstat-num" id="hTotalRec">0</div>
+      <div class="hstat-label">Total Records</div>
+    </div>
+    <div class="hstat">
+      <div class="hstat-num" id="hTotalCust">0</div>
+      <div class="hstat-label">Customers</div>
+    </div>
+    <div class="hstat">
+      <div class="hstat-num" id="hFiles">0</div>
+      <div class="hstat-label">Files Loaded</div>
+    </div>
+  </div>
+</header>
+
+<!-- SETTINGS BAR -->
+<div id="settingsBar">
+  <button class="sb-btn sb-btn-toggle" onclick="toggleSettings()" id="sbToggleBtn">⚙ Hide Settings</button>
+  <div id="sbFields" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <label>🔗 Supabase URL:</label>
+    <input type="text" id="sbApiKey" placeholder="https://xxxx.supabase.co" autocomplete="off" style="width:280px">
+    <label>🔑 Anon Key:</label>
+    <input type="password" id="sbBinId" placeholder="Paste your Supabase anon/public key…" style="width:260px">
+    <button class="sb-btn sb-btn-connect" onclick="connectCloud()">Save &amp; Connect</button>
+  </div>
+  <span class="sb-dot off" id="sbDot"></span>
+  <span id="sbStatus" class="off">Not connected</span>
+  <div style="flex:1"></div>
+  <button class="sb-btn sb-btn-refresh" onclick="refreshData()">↺ Refresh</button>
+</div>
+
+<main>
+
+  <p class="section-title">1 · Add Excel Files</p>
+  <div class="dropzone" id="dropzone">
+    <input type="file" id="fileInput" accept=".xlsx,.xls" multiple>
+    <div class="drop-icon">📂</div>
+    <div class="drop-title">Drag &amp; drop Excel files here</div>
+    <div class="drop-sub">or click to browse — add as many files as you like, any time</div>
+    <div class="drop-hint">Accepts .xlsx · Reads Job Log, Quote Log, Quote (any year), Filtered, and Lost tabs automatically</div>
+  </div>
+
+  <div class="file-list" id="fileList"></div>
+
+  <div class="action-bar" id="actionBar">
+    <button class="btn btn-primary" id="btnProcess" disabled onclick="processFiles()">⚙️ Process &amp; Merge</button>
+    <button class="btn btn-success" id="btnExport" disabled onclick="exportExcel()">⬇️ Download Merged Excel</button>
+    <button class="btn btn-danger" id="btnClear" onclick="clearAll()">🗑 Clear All Data</button>
+    <div class="progress-wrap" id="progressWrap" style="display:none">
+      <div class="progress-bar-bg"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+      <div class="progress-label" id="progressLabel">Processing…</div>
+    </div>
+  </div>
+
+  <div class="log-box" id="logBox"><div class="log-line info">[ready] Job Log Merger v2.0 (Shared) initialized. Configure cloud sync above, then drop files to begin.</div></div>
+
+  <p class="section-title">2 · Analytics &amp; Summary</p>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Total Records</div></div>
+    <div class="stat-card green"><div class="stat-num" id="statCust">0</div><div class="stat-label">Unique Customers</div></div>
+    <div class="stat-card gold"><div class="stat-num" id="statQuotes">0</div><div class="stat-label">Quote Records</div></div>
+    <div class="stat-card orange"><div class="stat-num" id="statJobs">0</div><div class="stat-label">Job Records</div></div>
+    <div class="stat-card" style="border-top-color:#7030A0"><div class="stat-num" id="statLost">0</div><div class="stat-label">Lost Records</div></div>
+    <div class="stat-card" style="border-top-color:#C00000"><div class="stat-num" id="statWon">0</div><div class="stat-label">Won Quotes</div></div>
+    <div class="stat-card" style="border-top-color:#595959"><div class="stat-num" id="statMultiLoc">0</div><div class="stat-label">Multi-Location</div></div>
+    <div class="stat-card" style="border-top-color:#ED7D31"><div class="stat-num" id="statFiles">0</div><div class="stat-label">Files Loaded</div></div>
+  </div>
+
+  <!-- VERTICAL / INDUSTRY BREAKDOWN — master excel style -->
+  <div class="breakdown-card" style="margin-bottom:16px">
+    <div class="breakdown-header">VERTICAL / INDUSTRY BREAKDOWN</div>
+    <div id="vertTable"><div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Process files to see breakdown</div></div></div>
+  </div>
+
+  <!-- PRODUCT TYPE SUMMARY — master excel exact format -->
+  <div class="breakdown-card" style="margin-bottom:16px">
+    <div class="breakdown-header">PRODUCT TYPE SUMMARY</div>
+    <div id="prodTable"><div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-text">Process files to see breakdown</div></div></div>
+  </div>
+
+  <!-- YEAR-OVER-YEAR SUMMARY -->
+  <div class="breakdown-card" style="margin-bottom:16px">
+    <div class="breakdown-header">YEAR-OVER-YEAR SUMMARY</div>
+    <div id="yoyTable"><div class="empty-state"><div class="empty-state-icon">📅</div><div class="empty-state-text">Process files to see year-over-year data</div></div></div>
+  </div>
+
+  <!-- YEAR-OVER-YEAR PRODUCT TYPE -->
+  <div class="breakdown-card" style="margin-bottom:24px">
+    <div class="breakdown-header">YEAR-OVER-YEAR PRODUCT TYPE SUMMARY</div>
+    <div id="yoyProdTable"><div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-text">Process files to see product year-over-year data</div></div></div>
+  </div>
+
+  <!-- EDIT VERTICAL PER RECORD -->
+  <div class="breakdown-card" style="margin-bottom:24px" id="editSection">
+    <div class="breakdown-header">✎ EDIT VERTICAL / INDUSTRY — SEARCH &amp; UPDATE ANY RECORD</div>
+    <div style="padding:16px">
+      <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+        <input type="text" id="editSearch" placeholder="Search by customer name, city, state, vertical, product type, PIC…"
+          oninput="renderEditTable()"
+          style="flex:1;min-width:220px;padding:9px 12px;border:1px solid #D9D9D9;border-radius:8px;font-size:13px">
+        <select id="editFilterType" onchange="renderEditTable()"
+          style="padding:9px 12px;border:1px solid #D9D9D9;border-radius:8px;font-size:13px">
+          <option value="">All record types</option>
+          <option>Quote</option><option>Job</option><option>Lost</option>
+        </select>
+        <select id="editFilterState" onchange="renderEditTable()"
+          style="padding:9px 12px;border:1px solid #D9D9D9;border-radius:8px;font-size:13px">
+          <option value="">All states</option>
+        </select>
+        <select id="editFilterVert" onchange="renderEditTable()"
+          style="padding:9px 12px;border:1px solid #D9D9D9;border-radius:8px;font-size:13px">
+          <option value="">All verticals</option>
+        </select>
+        <span style="font-size:12px;color:#595959" id="editMatchCount"></span>
+      </div>
+      <div id="editTableWrap" style="overflow-x:auto;max-height:600px;overflow-y:auto">
+        <div class="empty-state" style="padding:32px">
+          <div class="empty-state-icon" style="font-size:32px;opacity:0.4">🔍</div>
+          <div class="empty-state-text">Process files first, then search here to edit any record's vertical</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FULL RECORD EDIT MODAL -->
+  <div id="editCustomerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto">
+    <div style="background:white;border-radius:12px;width:640px;max-width:98vw;box-shadow:0 8px 32px rgba(0,0,0,0.3)">
+
+      <!-- Modal header -->
+      <div style="background:#1F3864;border-radius:12px 12px 0 0;padding:16px 24px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="color:white;font-size:15px;font-weight:700">Edit Record</div>
+          <div style="color:rgba(255,255,255,0.6);font-size:12px" id="editCustDesc"></div>
+        </div>
+        <button onclick="closeEditCustModal()" style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:6px;padding:4px 10px;font-size:18px;cursor:pointer;line-height:1">✕</button>
+      </div>
+
+      <div style="padding:22px 24px">
+
+        <!-- Row 1: Customer Name + Record Type -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px">
+          <div>
+            <label class="edit-label">Customer / Job Name</label>
+            <input id="ef_Customer_Name" type="text" class="edit-input">
+          </div>
+          <div>
+            <label class="edit-label">Record Type</label>
+            <select id="ef_Record_Type" class="edit-input">
+              <option>Quote</option><option>Job</option><option>Lost</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Row 2: City + State -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px">
+          <div>
+            <label class="edit-label">Location / City</label>
+            <input id="ef_Location_City" type="text" class="edit-input">
+          </div>
+          <div>
+            <label class="edit-label">State</label>
+            <input id="ef_State" type="text" class="edit-input" maxlength="2" style="text-transform:uppercase">
+          </div>
+        </div>
+
+        <!-- Row 3: Vertical + Product Type -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px">
+          <div>
+            <label class="edit-label">Vertical / Industry</label>
+            <select id="ef_Vertical" class="edit-input"></select>
+          </div>
+          <div>
+            <label class="edit-label">Product Type</label>
+            <select id="ef_Product_Type" class="edit-input">
+              <option>Madix</option><option>Millworks</option><option>Service</option><option>Installation</option><option value=""></option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Row 4: Quote # + Job # + PIC -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+          <div>
+            <label class="edit-label">Quote #</label>
+            <input id="ef_Quote_Number" type="text" class="edit-input">
+          </div>
+          <div>
+            <label class="edit-label">Job #</label>
+            <input id="ef_Job_Number" type="text" class="edit-input">
+          </div>
+          <div>
+            <label class="edit-label">PIC</label>
+            <input id="ef_PIC" type="text" class="edit-input">
+          </div>
+        </div>
+
+        <!-- Row 5: Date + Status -->
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:14px">
+          <div>
+            <label class="edit-label">Date</label>
+            <input id="ef_Date" type="date" class="edit-input">
+          </div>
+          <div>
+            <label class="edit-label">Status</label>
+            <input id="ef_Status" type="text" class="edit-input">
+          </div>
+        </div>
+
+        <!-- Row 6: Price + Final Price -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div>
+            <label class="edit-label">Price ($)</label>
+            <input id="ef_Price" type="number" step="0.01" class="edit-input">
+          </div>
+          <div>
+            <label class="edit-label">Final Price ($)</label>
+            <input id="ef_Final_Price" type="number" step="0.01" class="edit-input">
+          </div>
+        </div>
+
+        <!-- Row 7: Comments -->
+        <div style="margin-bottom:14px">
+          <label class="edit-label">Comments</label>
+          <textarea id="ef_Comments" class="edit-input" rows="2" style="resize:vertical"></textarea>
+        </div>
+
+        <!-- Apply-all option (Vertical only) -->
+        <div style="background:#EEF5FB;border:1px solid #BDD7EE;border-radius:8px;padding:10px 14px;margin-bottom:18px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="editCustAllMatch" checked style="flex-shrink:0">
+          <label for="editCustAllMatch" style="font-size:13px;color:#1a1a2e;cursor:pointer">
+            Apply <strong>Vertical / Industry</strong> change to <strong>all</strong> records with this customer name
+          </label>
+        </div>
+
+        <!-- Buttons -->
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button onclick="closeEditCustModal()" style="padding:9px 20px;border:1px solid #D9D9D9;border-radius:8px;background:white;font-size:14px;cursor:pointer">Cancel</button>
+          <button onclick="applyCustomerEdit()" style="padding:9px 22px;border:none;border-radius:8px;background:#1F3864;color:white;font-size:14px;font-weight:700;cursor:pointer">Save Changes</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const VERTICAL_MAP = {
+  'Supermarket': ['whole foods','bristol farms','sprouts','erewhon','gelson','co-opportunity','boise co-op','fresh choice','california fresh','el rancho','el super','market','carniceria','apna bazar','casa lucas','antelope acres','deans produce','ecoberry','evergreen asian','c&s wholesale','food store','briar patch','barstow country','abundant life','down to earth','corner store','corner stop','dalla family','metropolitan market','baron','harvest','pick n save','vista fresh'],
+  'Liquor/Wine Store': ['liquor','wine','spirits','corked','bay liquor','canyon wine','five star','continental liquor'],
+  'Pet Store': ["pet center","pet supply","pet store","allan's pet","anaheim pet","astro pet","earthwise pet","fox feed","anaheim feed"],
+  'Paint Store': ['benjamin moore','paint','catalina paint','devaul paint','drake\'s paint','arizona paint','andren\'s paint','decore color'],
+  'Hardware/Home Improvement': ['hardware','ace hardware','alaska industrial','fulkerson','diy home center','air supply tools','batteries plus'],
+  'Electronics/Appliance Retail': ['curacao','best buy','amazon','e system','e systems'],
+  'Pharmacy/Drug Store': ['pharmacy','cvs','walgreen','rite aid'],
+  'Auto/Equipment': ['auto','pick-n-pull','honda','findlay honda','accel robotics','american implement'],
+  'Casino/Entertainment': ['casino','augustine','fast lap'],
+  'Construction/Contractor': ['construction','contracting','burnett haase','boekestein','cheney brothers','elite commercial','branded group','colorado west','clayton custom','creative construction','dehorty','floor to ceiling'],
+  'Fixture/Display': ['fixture','display','fixturing','acme display','cta fixture','creative store','88 store fixture','food store solutions','cornerstone display','equihua','ccr market'],
+  'Sporting Goods': ['sporting','big 5'],
+  'Restaurant/Food Service': ["chef's toys","chefs' toys",'restaurant','grill','burrata'],
+  'Clothing/Beauty': ['clothing','beauty','hair','affliction','cosmetic','babe hair'],
+  'Government/Municipality': ['city of ','city group','al abc'],
+};
+
+function getVertical(name) {
+  if (!name) return 'Other/Miscellaneous';
+  const c = String(name).toLowerCase();
+  for (const [v, kws] of Object.entries(VERTICAL_MAP)) {
+    if (kws.some(kw => c.includes(kw))) return v;
+  }
+  return 'Other/Miscellaneous';
+}
+
+function normalizeType(t) {
+  const s = String(t||'').trim().toLowerCase();
+  if (s === 'madix') return 'Madix';
+  if (s === 'millworks' || s === 'mill/mad') return 'Millworks';
+  if (s === 'service') return 'Service';
+  if (s === 'installation') return 'Installation';
+  return String(t||'').trim() || '';
+}
+
+const TARGET_TABS = {
+  job: /job\s*log/i,
+  quote: /quote\s*log|\d{4}\s*quote$|^quote\s*log|filtered/i,
+  lost: /lost/i,
+};
+
+const SKIP_TABS = /dashboard|^data$|design priority|reference/i;
+
+let pendingFiles = [];
+let allRecords = [];
+let processedFileNames = new Set();
+
+function log(msg, type='info') {
+  const box = document.getElementById('logBox');
+  const d = document.createElement('div');
+  d.className = 'log-line ' + type;
+  const ts = new Date().toLocaleTimeString();
+  d.textContent = `[${ts}] ${msg}`;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ── PAYLOAD COMPRESSION (kept — used by Supabase storage too) ─────────────
+const FIELD_MAP = {
+  Record_Type:'rt', Customer_Name:'cn', Location_City:'lc', State:'st',
+  Vertical:'v', Product_Type:'pt', Quote_Number:'qn', Job_Number:'jn',
+  Date:'d', PIC:'pic', Status:'s', Price:'p', Final_Price:'fp',
+  Year:'y', Month:'m', Source_Sheet:'ss', Source_File:'sf',
+  Comments:'co', Duplicate_Flag:'df'
+};
+const FIELD_MAP_REV = Object.fromEntries(Object.entries(FIELD_MAP).map(([k,v])=>[v,k]));
+
+function compressRecords(records) {
+  return records.map(r => {
+    const out = {};
+    for (const [full, short] of Object.entries(FIELD_MAP)) {
+      const val = r[full];
+      if (val !== undefined && val !== null && val !== '' && val !== 'nan' && val !== false) {
+        out[short] = val;
+      }
+    }
+    return out;
+  });
+}
+
+function decompressRecords(compressed) {
+  return compressed.map(r => {
+    const out = {};
+    for (const [short, full] of Object.entries(FIELD_MAP_REV)) {
+      out[full] = r[short] !== undefined ? r[short] : '';
+    }
+    return out;
+  });
+}
+
+// ── SUPABASE CLOUD STORAGE ────────────────────────────────────────────────
+// Real database — no size limits, handles millions of rows
+// Supabase free tier: 500MB storage, plenty for this use case
+let SUPA_URL = '';
+let SUPA_KEY = '';
+let supaClient = null;
+const LS_CONFIG = 'joblog_supa_config';
+let syncInProgress = false;
+
+function setSyncStatus(state, msg) {
+  document.getElementById('sbDot').className = 'sb-dot ' + state;
+  const txt = document.getElementById('sbStatus');
+  txt.className = state;
+  txt.textContent = msg;
+}
+
+function toggleSettings() {
+  const fields = document.getElementById('sbFields');
+  const btn    = document.getElementById('sbToggleBtn');
+  const hidden = fields.style.display === 'none';
+  fields.style.display = hidden ? 'flex' : 'none';
+  btn.textContent = hidden ? '⚙ Hide Settings' : '⚙ Show Settings';
+}
+
+function initSupabase(url, key) {
+  supaClient = window.supabase.createClient(url, key);
+}
+
+async function connectCloud() {
+  const url = document.getElementById('sbApiKey').value.trim();
+  const key = document.getElementById('sbBinId').value.trim();
+  if (!url || !key) { alert('Please enter both your Supabase URL and Anon Key.'); return; }
+  if (!url.startsWith('https://') || !url.includes('supabase.co')) {
+    alert('Supabase URL should look like: https://xxxx.supabase.co'); return;
+  }
+  setSyncStatus('warn', 'Connecting…');
+  try {
+    initSupabase(url, key);
+    // Test connection
+    const { error } = await supaClient.from('joblog_data').select('id').limit(1);
+    if (error && error.code !== 'PGRST116') throw new Error(error.message);
+    SUPA_URL = url; SUPA_KEY = key;
+    localStorage.setItem(LS_CONFIG, JSON.stringify({ url: SUPA_URL, key: SUPA_KEY }));
+    const by = localStorage.getItem('joblog_username') || '';
+    setSyncStatus('ok', `✓ Connected to Supabase${by ? ' · ' + by : ''}`);
+    log(`✓ Connected to Supabase: ${url}`, 'ok');
+    await loadStorage(true);
+  } catch(e) {
+    setSyncStatus('err', `Connection failed: ${e.message}`);
+    log(`Supabase connection failed: ${e.message}`, 'err');
+  }
+}
+
+async function refreshData() {
+  if (!supaClient) {
+    log('Not connected — enter your Supabase URL and Anon Key above and click Save & Connect.', 'warn');
+    return;
+  }
+  log('Refreshing from Supabase…', 'info');
+  await loadStorage(true);
+}
+
+async function loadStorage(explicitRefresh = false) {
+  if (!supaClient) {
+    setSyncStatus('off', 'Not connected — enter credentials above');
+    return;
+  }
+  setSyncStatus('warn', 'Loading…');
+  try {
+    const { data, error } = await supaClient
+      .from('joblog_data').select('*').eq('id', 1).single();
+
+    if (error && error.code === 'PGRST116') {
+      // No row yet — fresh database
+      allRecords = []; processedFileNames = new Set();
+      setSyncStatus('ok', '✓ Connected · 0 records · ready for first upload');
+      log('✓ Connected to Supabase — no data yet, ready for first upload', 'ok');
+      updateUI(); return;
+    }
+    if (error) throw new Error(error.message);
+
+    const stored = data.data || {};
+    const rawRecords = stored.records || [];
+    const cloudRecords = stored.compressed ? decompressRecords(rawRecords) : rawRecords;
+    const by   = stored.updatedBy   ? ` · updated by ${stored.updatedBy}`  : '';
+    const when = stored.lastUpdated ? ` on ${stored.lastUpdated}`           : '';
+
+    // Safety: never silently overwrite local data with empty cloud
+    if (cloudRecords.length === 0 && allRecords.length > 0 && !explicitRefresh) {
+      setSyncStatus('err', `Cloud has 0 records but ${allRecords.length.toLocaleString()} are loaded locally — last save may have failed.`);
+      log(`⚠ Cloud empty but ${allRecords.length} records in session. Check connection.`, 'warn');
+      return;
+    }
+    if (cloudRecords.length === 0 && allRecords.length > 0 && explicitRefresh) {
+      const ok = window.confirm(
+        `Cloud has 0 records but ${allRecords.length.toLocaleString()} are in your session.\n\nClick OK to load from cloud (clears local data), or Cancel to keep local data.`
+      );
+      if (!ok) {
+        setSyncStatus('warn', `Refresh cancelled — keeping ${allRecords.length.toLocaleString()} local records.`);
+        log('Refresh cancelled — local data preserved.', 'warn'); return;
+      }
+    }
+
+    allRecords = cloudRecords;
+    processedFileNames = new Set(stored.processedFiles || []);
+    setSyncStatus('ok', `✓ Connected · ${allRecords.length.toLocaleString()} records${by}${when}`);
+    log(`✓ Loaded ${allRecords.length} records from Supabase${by}`, 'ok');
+    updateUI();
+    if (allRecords.length) document.getElementById('btnExport').disabled = false;
+  } catch(e) {
+    setSyncStatus('err', `Load failed: ${e.message} — click Refresh to retry`);
+    log(`Supabase load failed: ${e.message}`, 'err');
+  }
+}
+
+async function saveStorage() {
+  if (!supaClient) {
+    try {
+      localStorage.setItem('joblog_records', JSON.stringify(allRecords));
+      localStorage.setItem('joblog_files', JSON.stringify([...processedFileNames]));
+    } catch(e) { log('Warning: Could not save to local cache', 'warn'); }
+    return;
+  }
+  while (syncInProgress) await new Promise(r => setTimeout(r, 100));
+  syncInProgress = true;
+  setSyncStatus('warn', 'Saving…');
+  try {
+    const by = localStorage.getItem('joblog_username') || 'team member';
+    const compressed = compressRecords(allRecords);
+    const payload = {
+      records: compressed,
+      processedFiles: [...processedFileNames],
+      lastUpdated: new Date().toLocaleString(),
+      updatedBy: by,
+      compressed: true
+    };
+    const sizeKB = (JSON.stringify(payload).length / 1024).toFixed(0);
+    log(`Saving ${allRecords.length} records (${sizeKB}KB) to Supabase…`, 'info');
+    const { error } = await supaClient
+      .from('joblog_data')
+      .upsert({ id: 1, data: payload, updated_at: new Date().toISOString() });
+    if (error) throw new Error(error.message);
+    setSyncStatus('ok', `✓ Connected · ${allRecords.length.toLocaleString()} records · saved by ${by} at ${new Date().toLocaleTimeString()}`);
+    log(`✓ Saved ${allRecords.length} records to Supabase`, 'ok');
+  } catch(e) {
+    setSyncStatus('err', `Save failed: ${e.message} — click Refresh to retry`);
+    log(`Supabase save failed: ${e.message}`, 'err');
+  } finally {
+    syncInProgress = false;
+  }
+}
+
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(files) {
+  for (const f of files) {
+    if (!f.name.match(/\.(xlsx|xls)$/i)) { log(`Skipped ${f.name} — not an Excel file`, 'warn'); continue; }
+    if (pendingFiles.find(p => p.file.name === f.name)) { log(`${f.name} already in queue`, 'warn'); continue; }
+    pendingFiles.push({ file: f, status: 'pending' });
+    renderFileItem(f, 'pending');
+    log(`Added: ${f.name} (${(f.size/1024).toFixed(0)} KB)`, 'info');
+  }
+  document.getElementById('btnProcess').disabled = pendingFiles.filter(p => p.status === 'pending').length === 0;
+  fileInput.value = '';
+}
+
+function renderFileItem(f, status) {
+  const list = document.getElementById('fileList');
+  const id = 'fi_' + f.name.replace(/[^a-z0-9]/gi,'_');
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'file-item'; el.id = id;
+    list.appendChild(el);
+  }
+  const statusLabels = { pending:'Pending', processing:'Reading…', done:'Done ✓', error:'Error' };
+  const statusClasses = { pending:'status-pending', processing:'status-processing', done:'status-done', error:'status-error' };
+  el.innerHTML = `
+    <div class="file-icon">📄</div>
+    <div class="file-info">
+      <div class="file-name">${f.name}</div>
+      <div class="file-meta">${(f.size/1024).toFixed(0)} KB</div>
+    </div>
+    <span class="file-status ${statusClasses[status]}">${statusLabels[status]}</span>
+    ${status==='pending'?`<button class="file-remove" onclick="removeFile('${f.name}')" title="Remove">✕</button>`:''}
+  `;
+}
+
+function removeFile(name) {
+  pendingFiles = pendingFiles.filter(p => p.file.name !== name);
+  const id = 'fi_' + name.replace(/[^a-z0-9]/gi,'_');
+  const el = document.getElementById(id);
+  if (el) el.remove();
+  document.getElementById('btnProcess').disabled = pendingFiles.filter(p => p.status === 'pending').length === 0;
+}
+
+async function processFiles() {
+  const toProcess = pendingFiles.filter(p => p.status === 'pending');
+  if (!toProcess.length) return;
+  document.getElementById('btnProcess').disabled = true;
+  document.getElementById('progressWrap').style.display = 'flex';
+  let done = 0;
+
+  for (const pf of toProcess) {
+    pf.status = 'processing';
+    renderFileItem(pf.file, 'processing');
+    log(`Processing: ${pf.file.name}`, 'info');
+    try {
+      const recs = await readExcelFile(pf.file);
+      allRecords.push(...recs);
+      processedFileNames.add(pf.file.name);
+      pf.status = 'done';
+      renderFileItem(pf.file, 'done');
+      log(`✓ ${pf.file.name} → ${recs.length} records extracted`, 'ok');
+    } catch(e) {
+      pf.status = 'error';
+      renderFileItem(pf.file, 'error');
+      log(`Error reading ${pf.file.name}: ${e.message}`, 'err');
+    }
+    done++;
+    const pct = Math.round(done/toProcess.length*100);
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressLabel').textContent = `Processed ${done} of ${toProcess.length} files…`;
+    await new Promise(r => setTimeout(r, 30));
+  }
+
+  pendingFiles = pendingFiles.filter(p => p.status !== 'done');
+  updateUI();
+  document.getElementById('btnExport').disabled = allRecords.length === 0;
+  document.getElementById('progressLabel').textContent = `Complete — ${allRecords.length} records. Saving to cloud…`;
+  log(`Merge complete. ${allRecords.length} total records. Saving to cloud…`, 'ok');
+  await saveStorage();
+  document.getElementById('progressLabel').textContent = `Complete — ${allRecords.length} total records saved to cloud`;
+}
+
+async function readExcelFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        const records = [];
+
+        // ── Detect if this is a previously-exported merger file ──
+        // Exported files have an "All Records" sheet with our own column names
+        const isExport = wb.SheetNames.includes('All Records') && (() => {
+          const testRows = XLSX.utils.sheet_to_json(wb.Sheets['All Records'], { defval: '' });
+          return testRows.length > 0 && 'Customer / Job Name' in testRows[0];
+        })();
+
+        if (isExport) {
+          log(`  Detected merger export format in ${file.name} — reading All Records sheet`, 'info');
+
+          // ── Build a vertical override map from Master Customer List ──
+          // This captures any edits the user made directly in Excel to the Master Customer List sheet
+          // Key: "CustomerName|||City" → vertical string
+          const vertOverride = {};
+          if (wb.SheetNames.includes('Master Customer List')) {
+            const custRows = XLSX.utils.sheet_to_json(wb.Sheets['Master Customer List'], { defval: '' });
+            for (const cr of custRows) {
+              const name = String(cr['Customer Name'] || '').trim();
+              const city = String(cr['Location / City'] || '').trim();
+              const vert = String(cr['Vertical / Industry'] || '').trim();
+              if (name && vert) {
+                // Store by name+city for precise match, and by name alone as fallback
+                vertOverride[name + '|||' + city] = vert;
+                // Only set the name-only fallback if all cities agree on same vertical
+                if (vertOverride['__name__' + name] === undefined) {
+                  vertOverride['__name__' + name] = vert;
+                } else if (vertOverride['__name__' + name] !== vert) {
+                  vertOverride['__name__' + name] = null; // conflict — don't use name-only fallback
+                }
+              }
+            }
+            const overrideCount = Object.keys(vertOverride).filter(k => !k.startsWith('__name__')).length;
+            log(`  Loaded ${overrideCount} vertical overrides from Master Customer List`, 'info');
+          }
+
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets['All Records'], { defval: '' });
+          log(`  Sheet: "All Records" in ${file.name} (${rows.length} rows)`, 'info');
+          for (const row of rows) {
+            const rec = parseExportRow(row, file.name, vertOverride);
+            if (rec) records.push(rec);
+          }
+
+          // Log how many records had their vertical updated from the Master Customer List
+          const updated = records.filter(r => r._vertOverridden).length;
+          if (updated > 0) log(`  ✓ Applied vertical overrides to ${updated} records from Master Customer List edits`, 'ok');
+          records.forEach(r => delete r._vertOverridden);
+        } else {
+          // ── Original source file — use tab-name detection as before ──
+          for (const sheetName of wb.SheetNames) {
+            if (SKIP_TABS.test(sheetName)) continue;
+            const sheet = wb.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+            if (!rows.length) continue;
+            const isJob = TARGET_TABS.job.test(sheetName);
+            const isQuote = TARGET_TABS.quote.test(sheetName);
+            const isLost = TARGET_TABS.lost.test(sheetName);
+            if (!isJob && !isQuote && !isLost) continue;
+            log(`  Sheet: "${sheetName}" in ${file.name} (${rows.length} rows)`, 'info');
+            for (const row of rows) {
+              const rec = parseRow(row, isJob ? 'Job' : isLost ? 'Lost' : 'Quote', sheetName, file.name);
+              if (rec) records.push(rec);
+            }
+          }
+        }
+
+        resolve(records);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('File read failed'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Parser for rows from a previously-exported merger Excel file
+// Columns: Record Type | Customer / Job Name | Location / City | State |
+//          Vertical / Industry | Product Type | Quote # | Job # | Date |
+//          PIC | Status | Price ($) | Final Price ($) | Year | Month |
+//          Source Sheet | Source File | Duplicate / Location Flag | Comments
+function parseExportRow(row, fileName, vertOverride) {
+  const custName = row['Customer / Job Name'];
+  if (!custName || String(custName).trim() === '') return null;
+
+  const customer = String(custName).trim();
+  const recType = String(row['Record Type'] || '').trim() || 'Quote';
+  const city = String(row['Location / City'] || '').trim();
+
+  // Priority: Master Customer List edit (name+city) > Master Customer List edit (name only) > All Records value > auto-tag
+  const savedVertical = String(row['Vertical / Industry'] || '').trim();
+  let vertical = savedVertical || getVertical(customer);
+  let overridden = false;
+
+  if (vertOverride) {
+    const preciseKey = customer + '|||' + city;
+    const nameKey = '__name__' + customer;
+    if (vertOverride[preciseKey]) {
+      // Precise name+city match from Master Customer List
+      if (vertOverride[preciseKey] !== savedVertical) overridden = true;
+      vertical = vertOverride[preciseKey];
+    } else if (vertOverride[nameKey]) {
+      // All locations for this customer have the same vertical in Master Customer List
+      if (vertOverride[nameKey] !== savedVertical) overridden = true;
+      vertical = vertOverride[nameKey];
+    }
+  }
+
+  let dateStr = '';
+  const dateRaw = row['Date'];
+  if (dateRaw) {
+    try {
+      const d = dateRaw instanceof Date ? dateRaw : new Date(dateRaw);
+      if (!isNaN(d)) dateStr = d.toISOString().slice(0,10);
+    } catch(e) {}
+  }
+
+  const year = dateStr ? parseInt(dateStr.slice(0,4)) : (row['Year'] || '');
+  const month = dateStr ? parseInt(dateStr.slice(5,7)) : (row['Month'] || '');
+
+  return {
+    Record_Type: recType,
+    Customer_Name: customer,
+    Location_City: String(row['Location / City'] || '').trim(),
+    State: String(row['State'] || '').trim(),
+    Vertical: vertical,
+    Product_Type: normalizeType(row['Product Type'] || ''),
+    Quote_Number: String(row['Quote #'] || '').trim(),
+    Job_Number: String(row['Job #'] || '').trim(),
+    Date: dateStr,
+    PIC: String(row['PIC'] || '').trim(),
+    Status: String(row['Status'] || '').trim(),
+    Price: parseFloat(String(row['Price ($)'] || '').replace(/[$,]/g, '')) || '',
+    Final_Price: parseFloat(String(row['Final Price ($)'] || '').replace(/[$,]/g, '')) || '',
+    Year: year,
+    Month: month,
+    Source_Sheet: String(row['Source Sheet'] || '').trim(),
+    Source_File: fileName,
+    Comments: String(row['Comments'] || '').slice(0, 200),
+    Duplicate_Flag: '',
+    _vertOverridden: overridden
+  };
+}
+
+function parseRow(row, recType, sheetName, fileName) {
+  const get = (...names) => { for (const n of names) { const v = row[n]; if (v !== undefined && v !== null && v !== '') return v; } return ''; };
+
+  const custName = get('CUSTOMER','Customer','JOB NAME','Job Name','job name');
+  if (!custName || String(custName).trim() === '') return null;
+
+  const locRaw = get('LOCATION','Location','CITY','City','city') || '';
+  const stateRaw = get('STATE','State','state') || '';
+
+  let locCity = String(locRaw).trim();
+  let state = String(stateRaw).trim();
+  if (locCity.includes(',') && !state) {
+    const parts = locCity.split(',');
+    locCity = parts[0].trim();
+    state = parts[1].trim();
+  }
+
+  const typeRaw = get('TYPE','Type','type') || '';
+  const productType = normalizeType(typeRaw);
+  const customer = String(custName).trim();
+  const vertical = getVertical(customer);
+
+  let dateRaw = get('DATE','Date','date','IN PROCESS DATE');
+  let dateStr = '';
+  if (dateRaw) {
+    try {
+      const d = dateRaw instanceof Date ? dateRaw : new Date(dateRaw);
+      if (!isNaN(d)) dateStr = d.toISOString().slice(0,10);
+    } catch(e) {}
+  }
+
+  const price = parseFloat(String(get('Price','price','PRICE')).replace(/[$,]/g,'')||'') || '';
+  const finalPrice = parseFloat(String(get('Final Price','final price','FINAL PRICE')).replace(/[$,]/g,'')||'') || '';
+  const status = get('Quote Status','Quote status','Job Status','Job status','Staus','Status','status','Quote_Status') || '';
+  const pic = get('PIC','Pic','pic') || '';
+  const quoteNum = get('QUOTE#','Quote#','quote#','QUOTE #') || '';
+  const jobNum = get('JOB#','Job#','job#','JOB #') || '';
+  const comments = String(get('Comments','comments','COMMENTS')||'').slice(0,200);
+  const year = dateStr ? parseInt(dateStr.slice(0,4)) : '';
+  const month = dateStr ? parseInt(dateStr.slice(5,7)) : '';
+
+  return {
+    Record_Type: recType, Customer_Name: customer, Location_City: locCity, State: state,
+    Vertical: vertical, Product_Type: productType, Quote_Number: String(quoteNum),
+    Job_Number: String(jobNum), Date: dateStr, PIC: String(pic), Status: String(status),
+    Price: price, Final_Price: finalPrice, Year: year, Month: month,
+    Source_Sheet: sheetName, Source_File: fileName, Comments: comments, Duplicate_Flag: ''
+  };
+}
+
+const ALL_VERTICALS = [
+  'Supermarket','Liquor/Wine Store','Pet Store','Paint Store',
+  'Hardware/Home Improvement','Electronics/Appliance Retail','Pharmacy/Drug Store',
+  'Auto/Equipment','Casino/Entertainment','Construction/Contractor','Fixture/Display',
+  'Sporting Goods','Restaurant/Food Service','Clothing/Beauty','Government/Municipality',
+  'Other/Miscellaneous'
+];
+
+let editingCustomerName = null;
+let editingRecordIdx = null;
+
+function fmt$(n) { return n ? '$' + Math.round(n).toLocaleString() : '$0'; }
+function fmtN(n) { return (n||0).toLocaleString(); }
+function winColor(r) {
+  if (r >= 60) return '#375623';
+  if (r > 0 && r < 30) return '#C00000';
+  return '#1a1a2e';
+}
+
+function updateUI() {
+  if (!allRecords.length) {
+    ['statTotal','statCust','statQuotes','statJobs','statLost','statWon','statMultiLoc','statFiles',
+     'hTotalRec','hTotalCust','hFiles'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = '0';
+    });
+    return;
+  }
+
+  // Flag duplicates
+  const nameMap = {};
+  for (const r of allRecords) {
+    if (!nameMap[r.Customer_Name]) nameMap[r.Customer_Name] = new Set();
+    nameMap[r.Customer_Name].add(r.Location_City||'_');
+  }
+  const nameCounts = {};
+  for (const r of allRecords) nameCounts[r.Customer_Name] = (nameCounts[r.Customer_Name]||0)+1;
+  for (const r of allRecords) {
+    const locs = nameMap[r.Customer_Name];
+    if (locs && locs.size > 1) r.Duplicate_Flag = 'Multiple Locations - Preserved';
+    else if (nameCounts[r.Customer_Name] > 1) r.Duplicate_Flag = 'Duplicate Name';
+    else r.Duplicate_Flag = '';
+  }
+
+  const total = allRecords.length;
+  const uniqueCust = new Set(allRecords.map(r => r.Customer_Name + '|' + r.Location_City)).size;
+  const quotes = allRecords.filter(r => r.Record_Type === 'Quote').length;
+  const jobs = allRecords.filter(r => r.Record_Type === 'Job').length;
+  const lost = allRecords.filter(r => r.Record_Type === 'Lost').length;
+  const won = allRecords.filter(r => String(r.Status||'').toLowerCase().includes('won')).length;
+  const multiLoc = allRecords.filter(r => r.Duplicate_Flag === 'Multiple Locations - Preserved').length;
+
+  document.getElementById('statTotal').textContent = fmtN(total);
+  document.getElementById('statCust').textContent = fmtN(uniqueCust);
+  document.getElementById('statQuotes').textContent = fmtN(quotes);
+  document.getElementById('statJobs').textContent = fmtN(jobs);
+  document.getElementById('statLost').textContent = fmtN(lost);
+  document.getElementById('statWon').textContent = fmtN(won);
+  document.getElementById('statMultiLoc').textContent = fmtN(multiLoc);
+  document.getElementById('statFiles').textContent = fmtN(processedFileNames.size);
+  document.getElementById('hTotalRec').textContent = fmtN(total);
+  document.getElementById('hTotalCust').textContent = fmtN(uniqueCust);
+  document.getElementById('hFiles').textContent = fmtN(processedFileNames.size);
+
+  // ── VERTICAL / INDUSTRY BREAKDOWN (master excel exact format) ──
+  const vMap = {};
+  for (const r of allRecords) {
+    const v = r.Vertical||'Other/Miscellaneous';
+    if (!vMap[v]) vMap[v] = {total:0,quotes:0,jobs:0,lost:0,won:0,madix:0,mill:0,price:0};
+    const m = vMap[v];
+    m.total++;
+    if (r.Record_Type==='Quote') m.quotes++;
+    if (r.Record_Type==='Job') m.jobs++;
+    if (r.Record_Type==='Lost') m.lost++;
+    if (String(r.Status||'').toLowerCase().includes('won')) m.won++;
+    if (r.Product_Type==='Madix') m.madix++;
+    if (r.Product_Type==='Millworks') m.mill++;
+    if (r.Price) m.price += Number(r.Price);
+  }
+  const vSorted = Object.entries(vMap).sort((a,b)=>b[1].total-a[1].total);
+  document.getElementById('vertTable').innerHTML = `<table class="breakdown-table">
+    <tr>
+      <th>Vertical / Industry</th>
+      <th style="text-align:right">Total Records</th>
+      <th style="text-align:right">Quotes</th>
+      <th style="text-align:right">Jobs</th>
+      <th style="text-align:right">Lost</th>
+      <th style="text-align:right">Won Quotes</th>
+      <th style="text-align:right">Total $ Volume</th>
+      <th style="text-align:right">Madix</th>
+      <th style="text-align:right">Millworks</th>
+      <th style="text-align:right">Win Rate %</th>
+    </tr>
+    ${vSorted.map(([v,m],i)=>{
+      const wr = m.quotes>0 ? Math.round(m.won/m.quotes*100*10)/10 : 0;
+      const wrStyle = `color:${winColor(wr)};font-weight:700`;
+      const bg = i%2===0?'#F9FAFB':'white';
+      return `<tr style="background:${bg}">
+        <td style="font-weight:600">${v}</td>
+        <td style="text-align:right">${fmtN(m.total)}</td>
+        <td style="text-align:right">${fmtN(m.quotes)}</td>
+        <td style="text-align:right">${fmtN(m.jobs)}</td>
+        <td style="text-align:right">${fmtN(m.lost)}</td>
+        <td style="text-align:right">${fmtN(m.won)}</td>
+        <td style="text-align:right">${fmt$(m.price)}</td>
+        <td style="text-align:right"><span class="badge badge-madix">${fmtN(m.madix)}</span></td>
+        <td style="text-align:right"><span class="badge badge-mill">${fmtN(m.mill)}</span></td>
+        <td style="text-align:right;${wrStyle}">${wr}%</td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+
+  // ── PRODUCT TYPE SUMMARY (master excel exact columns) ──
+  const pTypes = ['Madix','Millworks','Service','Installation'];
+  const pMap = {};
+  for (const r of allRecords) {
+    const pt = r.Product_Type||'';
+    if (!pMap[pt]) pMap[pt] = {total:0,quotes:0,jobs:0,won:0,price:0};
+    pMap[pt].total++;
+    if (r.Record_Type==='Quote') pMap[pt].quotes++;
+    if (r.Record_Type==='Job') pMap[pt].jobs++;
+    if (String(r.Status||'').toLowerCase().includes('won')) pMap[pt].won++;
+    if (r.Price) pMap[pt].price += Number(r.Price);
+  }
+  const pOrder = ['Madix','Millworks','Service','Installation'].filter(p=>pMap[p]);
+  Object.keys(pMap).filter(p=>!pOrder.includes(p)&&p).forEach(p=>pOrder.push(p));
+  document.getElementById('prodTable').innerHTML = `<table class="breakdown-table">
+    <tr>
+      <th>Product Type</th>
+      <th style="text-align:right">Total</th>
+      <th style="text-align:right">Quotes</th>
+      <th style="text-align:right">Jobs</th>
+      <th style="text-align:right">Won</th>
+      <th style="text-align:right">Win Rate %</th>
+      <th style="text-align:right">Total $ Volume</th>
+    </tr>
+    ${pOrder.map((p,i)=>{
+      const m = pMap[p]||{total:0,quotes:0,jobs:0,won:0,price:0};
+      const wr = m.quotes>0 ? Math.round(m.won/m.quotes*100*10)/10 : 0;
+      const bg = i%2===0?'#F9FAFB':'white';
+      let label = p;
+      if (p==='Madix') label='<span class="badge badge-madix" style="font-size:12px;padding:3px 10px">Madix</span>';
+      else if (p==='Millworks') label='<span class="badge badge-mill" style="font-size:12px;padding:3px 10px">Millworks</span>';
+      return `<tr style="background:${bg}">
+        <td style="font-weight:600">${label}</td>
+        <td style="text-align:right">${fmtN(m.total)}</td>
+        <td style="text-align:right">${fmtN(m.quotes)}</td>
+        <td style="text-align:right">${fmtN(m.jobs)}</td>
+        <td style="text-align:right">${fmtN(m.won)}</td>
+        <td style="text-align:right;color:${winColor(wr)};font-weight:700">${wr}%</td>
+        <td style="text-align:right">${fmt$(m.price)}</td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+
+  // ── YEAR-OVER-YEAR SUMMARY ──
+  const yMap = {};
+  for (const r of allRecords) {
+    const yr = r.Year||'Unknown';
+    if (!yMap[yr]) yMap[yr] = {total:0,quotes:0,jobs:0,lost:0,won:0,price:0,lostPrice:0};
+    const m = yMap[yr];
+    m.total++;
+    if (r.Record_Type==='Quote') m.quotes++;
+    if (r.Record_Type==='Job') m.jobs++;
+    if (r.Record_Type==='Lost') { m.lost++; if (r.Price) m.lostPrice += Number(r.Price); }
+    if (String(r.Status||'').toLowerCase().includes('won')) m.won++;
+    if (r.Price) m.price += Number(r.Price);
+  }
+  const ySorted = Object.entries(yMap).filter(([y])=>y!=='Unknown').sort((a,b)=>a[0]-b[0]);
+  document.getElementById('yoyTable').innerHTML = `<table class="breakdown-table">
+    <tr>
+      <th>Year</th>
+      <th style="text-align:right">Total Records</th>
+      <th style="text-align:right">Quotes</th>
+      <th style="text-align:right">Jobs</th>
+      <th style="text-align:right">Lost Records</th>
+      <th style="text-align:right">Lost $ Volume</th>
+      <th style="text-align:right">Won Quotes</th>
+      <th style="text-align:right">Total $ Volume</th>
+      <th style="text-align:right">Win Rate %</th>
+    </tr>
+    ${ySorted.map(([yr,m],i)=>{
+      const wr = m.quotes>0 ? Math.round(m.won/m.quotes*100*10)/10 : 0;
+      const bg = i%2===0?'#F9FAFB':'white';
+      return `<tr style="background:${bg}">
+        <td style="font-weight:700;color:#1F3864">${yr}</td>
+        <td style="text-align:right">${fmtN(m.total)}</td>
+        <td style="text-align:right">${fmtN(m.quotes)}</td>
+        <td style="text-align:right">${fmtN(m.jobs)}</td>
+        <td style="text-align:right;color:#7030A0;font-weight:600">${fmtN(m.lost)}</td>
+        <td style="text-align:right;color:#7030A0;font-weight:600">${m.lostPrice ? fmt$(m.lostPrice) : '—'}</td>
+        <td style="text-align:right">${fmtN(m.won)}</td>
+        <td style="text-align:right">${fmt$(m.price)}</td>
+        <td style="text-align:right;color:${winColor(wr)};font-weight:700">${wr}%</td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+
+  // ── YEAR-OVER-YEAR PRODUCT TYPE ──
+  const ypMap = {};
+  for (const r of allRecords) {
+    if (!r.Year || !r.Product_Type || !['Madix','Millworks'].includes(r.Product_Type)) continue;
+    const key = r.Year + '||' + r.Product_Type;
+    if (!ypMap[key]) ypMap[key] = {year:r.Year, product:r.Product_Type, total:0,quotes:0,jobs:0,won:0,price:0};
+    const m = ypMap[key];
+    m.total++;
+    if (r.Record_Type==='Quote') m.quotes++;
+    if (r.Record_Type==='Job') m.jobs++;
+    if (String(r.Status||'').toLowerCase().includes('won')) m.won++;
+    if (r.Price) m.price += Number(r.Price);
+  }
+  const ypSorted = Object.values(ypMap).sort((a,b)=>a.year-b.year||a.product.localeCompare(b.product));
+  document.getElementById('yoyProdTable').innerHTML = `<table class="breakdown-table">
+    <tr>
+      <th>Year</th>
+      <th>Product Type</th>
+      <th style="text-align:right">Total Records</th>
+      <th style="text-align:right">Quotes</th>
+      <th style="text-align:right">Jobs</th>
+      <th style="text-align:right">Won</th>
+      <th style="text-align:right">Win Rate %</th>
+      <th style="text-align:right">Total $ Volume</th>
+    </tr>
+    ${ypSorted.map((m,i)=>{
+      const wr = m.quotes>0 ? Math.round(m.won/m.quotes*100*10)/10 : 0;
+      const bg = i%2===0?'#F9FAFB':'white';
+      const badge = m.product==='Madix'
+        ? '<span class="badge badge-madix">Madix</span>'
+        : '<span class="badge badge-mill">Millworks</span>';
+      return `<tr style="background:${bg}">
+        <td style="font-weight:700;color:#1F3864">${m.year}</td>
+        <td>${badge}</td>
+        <td style="text-align:right">${fmtN(m.total)}</td>
+        <td style="text-align:right">${fmtN(m.quotes)}</td>
+        <td style="text-align:right">${fmtN(m.jobs)}</td>
+        <td style="text-align:right">${fmtN(m.won)}</td>
+        <td style="text-align:right;color:${winColor(wr)};font-weight:700">${wr}%</td>
+        <td style="text-align:right">${fmt$(m.price)}</td>
+      </tr>`;
+    }).join('')}
+  </table>`;
+
+  // refresh per-record editor table
+  setTimeout(renderEditTable, 0);
+}
+
+// ── PER-RECORD VERTICAL EDITOR ──
+
+function renderEditTable() {
+  if (!allRecords.length) return;
+  const q = (document.getElementById('editSearch').value||'').toLowerCase().trim();
+  const filterType = document.getElementById('editFilterType').value;
+  const filterVert = document.getElementById('editFilterVert').value;
+
+  // populate vertical filter dropdown
+  const vertSel = document.getElementById('editFilterVert');
+  const currentVert = vertSel.value;
+  const allVerts = [...new Set(allRecords.map(r=>r.Vertical||'Other/Miscellaneous'))].sort();
+  vertSel.innerHTML = '<option value="">All verticals</option>' +
+    allVerts.map(v=>`<option value="${v}" ${v===currentVert?'selected':''}>${v}</option>`).join('');
+
+  // populate state filter dropdown
+  const stateSel = document.getElementById('editFilterState');
+  const currentState = stateSel.value;
+  const allStates = [...new Set(allRecords.map(r=>r.State||'').filter(Boolean))].sort();
+  stateSel.innerHTML = '<option value="">All states</option>' +
+    allStates.map(s=>`<option value="${s}" ${s===currentState?'selected':''}>${s}</option>`).join('');
+
+  const filterState = stateSel.value;
+
+  let filtered = allRecords.map((r,i)=>({...r,_idx:i}));
+  if (q) filtered = filtered.filter(r =>
+    (r.Customer_Name||'').toLowerCase().includes(q) ||
+    (r.Location_City||'').toLowerCase().includes(q) ||
+    (r.State||'').toLowerCase().includes(q) ||
+    (r.Vertical||'').toLowerCase().includes(q) ||
+    (r.Product_Type||'').toLowerCase().includes(q) ||
+    (r.PIC||'').toLowerCase().includes(q)
+  );
+  if (filterType) filtered = filtered.filter(r => r.Record_Type === filterType);
+  if (filterState) filtered = filtered.filter(r => r.State === filterState);
+  if (filterVert) filtered = filtered.filter(r => r.Vertical === filterVert);
+
+  document.getElementById('editMatchCount').textContent =
+    `${filtered.length.toLocaleString()} record${filtered.length!==1?'s':''} found`;
+
+  if (!filtered.length) {
+    document.getElementById('editTableWrap').innerHTML =
+      `<div style="padding:24px;text-align:center;color:#595959;font-size:13px">No records match your search.</div>`;
+    return;
+  }
+
+  document.getElementById('editTableWrap').innerHTML = `
+    <table class="breakdown-table" style="font-size:12px">
+      <tr>
+        <th>Customer / Job Name</th>
+        <th>City</th>
+        <th>State</th>
+        <th>Type</th>
+        <th>Product</th>
+        <th>Current Vertical</th>
+        <th>Date</th>
+        <th>PIC</th>
+        <th style="text-align:center">Edit</th>
+      </tr>
+      ${filtered.map((r,i)=>{
+        const bg = i%2===0?'#F9FAFB':'white';
+        const typeBg = r.Record_Type==='Job'?'#E2EFDA':r.Record_Type==='Lost'?'#F3E5F5':'#DAEEF3';
+        const typeColor = r.Record_Type==='Job'?'#375623':r.Record_Type==='Lost'?'#7030A0':'#1F5C99';
+        const pt = r.Product_Type==='Madix'
+          ? '<span class="badge badge-madix">Madix</span>'
+          : r.Product_Type==='Millworks'
+          ? '<span class="badge badge-mill">Millworks</span>'
+          : (r.Product_Type||'—');
+        return `<tr style="background:${bg}">
+          <td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.Customer_Name||''}</td>
+          <td style="white-space:nowrap">${r.Location_City||''}</td>
+          <td style="text-align:center;white-space:nowrap">${r.State||''}</td>
+          <td><span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;background:${typeBg};color:${typeColor};white-space:nowrap">${r.Record_Type}</span></td>
+          <td>${pt}</td>
+          <td><span class="vert-chip">${r.Vertical||'Other/Miscellaneous'}</span></td>
+          <td style="white-space:nowrap;color:#595959">${r.Date||''}</td>
+          <td>${r.PIC||''}</td>
+          <td style="text-align:center">
+            <button onclick="openEditCustModal(${r._idx})"
+              style="background:#1F3864;border:none;color:white;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✎ Edit</button>
+          </td>
+        </tr>`;
+      }).join('')}
+    </table>`;
+}
+
+function openEditCustModal(idx) {
+  editingRecordIdx = idx;
+  const r = allRecords[idx];
+  editingCustomerName = r.Customer_Name;
+
+  // Header subtitle
+  document.getElementById('editCustDesc').textContent =
+    [r.Record_Type, r.Source_Sheet, r.Source_File].filter(Boolean).join(' · ');
+
+  // Populate vertical dropdown with all known verticals including any custom ones in data
+  const allVerts = [...new Set([...ALL_VERTICALS, ...allRecords.map(x=>x.Vertical||'').filter(Boolean)])].sort();
+  const vertSel = document.getElementById('ef_Vertical');
+  vertSel.innerHTML = allVerts.map(v =>
+    `<option value="${v}" ${v===(r.Vertical||'Other/Miscellaneous')?'selected':''}>${v}</option>`
+  ).join('');
+
+  // Fill every field from the record
+  document.getElementById('ef_Customer_Name').value  = r.Customer_Name  || '';
+  document.getElementById('ef_Record_Type').value    = r.Record_Type    || 'Quote';
+  document.getElementById('ef_Location_City').value  = r.Location_City  || '';
+  document.getElementById('ef_State').value          = r.State          || '';
+  document.getElementById('ef_Product_Type').value   = r.Product_Type   || '';
+  document.getElementById('ef_Quote_Number').value   = r.Quote_Number   || '';
+  document.getElementById('ef_Job_Number').value     = r.Job_Number     || '';
+  document.getElementById('ef_PIC').value            = r.PIC            || '';
+  document.getElementById('ef_Date').value           = r.Date           || '';
+  document.getElementById('ef_Status').value         = r.Status         || '';
+  document.getElementById('ef_Price').value          = r.Price          || '';
+  document.getElementById('ef_Final_Price').value    = r.Final_Price    || '';
+  document.getElementById('ef_Comments').value       = r.Comments       || '';
+
+  document.getElementById('editCustAllMatch').checked = true;
+  document.getElementById('editCustomerModal').style.display = 'flex';
+}
+
+function closeEditCustModal() {
+  document.getElementById('editCustomerModal').style.display = 'none';
+  editingRecordIdx = null; editingCustomerName = null;
+}
+
+function applyCustomerEdit() {
+  const idx = editingRecordIdx;
+  if (idx === null) return;
+
+  const newVertical  = document.getElementById('ef_Vertical').value;
+  const applyAll     = document.getElementById('editCustAllMatch').checked;
+
+  // Fields that apply only to this single record
+  const singleFields = {
+    Customer_Name:  document.getElementById('ef_Customer_Name').value.trim(),
+    Record_Type:    document.getElementById('ef_Record_Type').value,
+    Location_City:  document.getElementById('ef_Location_City').value.trim(),
+    State:          document.getElementById('ef_State').value.trim().toUpperCase(),
+    Product_Type:   document.getElementById('ef_Product_Type').value,
+    Quote_Number:   document.getElementById('ef_Quote_Number').value.trim(),
+    Job_Number:     document.getElementById('ef_Job_Number').value.trim(),
+    PIC:            document.getElementById('ef_PIC').value.trim(),
+    Date:           document.getElementById('ef_Date').value,
+    Status:         document.getElementById('ef_Status').value.trim(),
+    Price:          parseFloat(document.getElementById('ef_Price').value) || '',
+    Final_Price:    parseFloat(document.getElementById('ef_Final_Price').value) || '',
+    Comments:       document.getElementById('ef_Comments').value.trim(),
+  };
+
+  // Derive Year/Month from date if changed
+  if (singleFields.Date) {
+    singleFields.Year  = parseInt(singleFields.Date.slice(0,4));
+    singleFields.Month = parseInt(singleFields.Date.slice(5,7));
+  }
+
+  // Apply all single-record fields to this record
+  Object.assign(allRecords[idx], singleFields);
+
+  // Apply Vertical to this record (always)
+  allRecords[idx].Vertical = newVertical;
+
+  // If "apply to all matching" is checked, push Vertical to every record with the same original customer name
+  let vertChanged = 1;
+  if (applyAll) {
+    for (let i = 0; i < allRecords.length; i++) {
+      if (i !== idx && allRecords[i].Customer_Name === editingCustomerName) {
+        allRecords[i].Vertical = newVertical;
+        vertChanged++;
+      }
+    }
+  }
+
+  saveStorage(); updateUI(); renderEditTable(); closeEditCustModal(); // fire-and-forget ok here — UI updates immediately, cloud saves async
+  const vertMsg = applyAll && vertChanged > 1 ? ` (vertical applied to ${vertChanged} matching records)` : '';
+  log(`✓ Record updated: "${singleFields.Customer_Name}"${vertMsg}`, 'ok');
+}
+
+document.getElementById('editCustomerModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('editCustomerModal')) closeEditCustModal();
+});
+
+function exportExcel() {
+  if (!allRecords.length) return;
+  log('Building Excel export…', 'info');
+
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: All Records
+  const allSheet = XLSX.utils.json_to_sheet(allRecords.map(r=>({
+    'Record Type': r.Record_Type,
+    'Customer / Job Name': r.Customer_Name,
+    'Location / City': r.Location_City,
+    'State': r.State,
+    'Vertical / Industry': r.Vertical,
+    'Product Type': r.Product_Type,
+    'Quote #': r.Quote_Number,
+    'Job #': r.Job_Number,
+    'Date': r.Date,
+    'PIC': r.PIC,
+    'Status': r.Status,
+    'Price ($)': r.Price || '',
+    'Final Price ($)': r.Final_Price || '',
+    'Year': r.Year,
+    'Month': r.Month,
+    'Source Sheet': r.Source_Sheet,
+    'Source File': r.Source_File,
+    'Duplicate / Location Flag': r.Duplicate_Flag,
+    'Comments': r.Comments,
+  })));
+  XLSX.utils.book_append_sheet(wb, allSheet, 'All Records');
+
+  // Sheet 2: Unique Customers
+  const custMap = {};
+  for (const r of allRecords) {
+    const key = r.Customer_Name + '|||' + r.Location_City;
+    if (!custMap[key]) {
+      custMap[key] = { name: r.Customer_Name, city: r.Location_City, state: r.State,
+        vertical: r.Vertical, products: new Set(), quotes:0, jobs:0, won:0, totalPrice:0,
+        firstDate: r.Date, lastDate: r.Date, flag: r.Duplicate_Flag };
+    }
+    const c = custMap[key];
+    if (r.Product_Type) c.products.add(r.Product_Type);
+    if (r.Record_Type === 'Quote') c.quotes++;
+    if (r.Record_Type === 'Job') c.jobs++;
+    if (String(r.Status).toLowerCase().includes('won')) c.won++;
+    if (r.Price) c.totalPrice += Number(r.Price);
+    if (r.Date && r.Date < c.firstDate) c.firstDate = r.Date;
+    if (r.Date && r.Date > c.lastDate) c.lastDate = r.Date;
+    if (r.Duplicate_Flag) c.flag = r.Duplicate_Flag;
+  }
+  const custRows = Object.values(custMap).map(c => {
+    const prods = [...c.products].filter(p=>p&&p!=='undefined');
+    const primary = prods.includes('Madix') && prods.includes('Millworks') ? 'Both' : prods[0] || '';
+    return {
+      'Customer Name': c.name, 'Location / City': c.city, 'State': c.state,
+      'Vertical / Industry': c.vertical, 'Primary Product': primary,
+      'All Products': prods.join(', '),
+      'Total Quotes': c.quotes, 'Total Jobs': c.jobs, 'Won Quotes': c.won,
+      'Win Rate %': c.quotes > 0 ? Math.round(c.won/c.quotes*100) : 0,
+      'Total $ Volume': Math.round(c.totalPrice),
+      'First Activity': c.firstDate, 'Last Activity': c.lastDate,
+      'Duplicate / Location Flag': c.flag,
+    };
+  });
+  const custSheet = XLSX.utils.json_to_sheet(custRows);
+  XLSX.utils.book_append_sheet(wb, custSheet, 'Master Customer List');
+
+  // Sheet 3: Vertical Summary
+  const vMap = {};
+  for (const r of allRecords) {
+    if (!vMap[r.Vertical]) vMap[r.Vertical] = {total:0,quotes:0,jobs:0,won:0,madix:0,mill:0,price:0};
+    const v = vMap[r.Vertical];
+    v.total++; if (r.Record_Type==='Quote') v.quotes++; if (r.Record_Type==='Job') v.jobs++;
+    if (String(r.Status).toLowerCase().includes('won')) v.won++;
+    if (r.Product_Type==='Madix') v.madix++; if (r.Product_Type==='Millworks') v.mill++;
+    if (r.Price) v.price += Number(r.Price);
+  }
+  const vertRows = Object.entries(vMap).sort((a,b)=>b[1].total-a[1].total).map(([v,d])=>({
+    'Vertical': v, 'Total Records': d.total, 'Quotes': d.quotes, 'Jobs': d.jobs,
+    'Won': d.won, 'Win Rate %': d.quotes>0?Math.round(d.won/d.quotes*100):0,
+    'Madix Records': d.madix, 'Millworks Records': d.mill, 'Total $ Volume': Math.round(d.price),
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vertRows), 'Vertical Summary');
+
+  // Sheet 4: Files Loaded
+  const filesRows = [...processedFileNames].map(f => ({ 'File Name': f, 'Status': 'Processed' }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filesRows), 'Files Loaded');
+
+  const date = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `JobLog_Merged_${date}.xlsx`);
+  log(`✓ Exported: JobLog_Merged_${date}.xlsx (${allRecords.length} records)`, 'ok');
+}
+
+async function clearAll() {
+  if (!confirm('Clear ALL accumulated data for everyone on the team? This cannot be undone.')) return;
+  allRecords = [];
+  pendingFiles = [];
+  processedFileNames = new Set();
+  document.getElementById('fileList').innerHTML = '';
+  document.getElementById('btnExport').disabled = true;
+  document.getElementById('btnProcess').disabled = true;
+  document.getElementById('progressWrap').style.display = 'none';
+  updateUI();
+  log('Clearing data — saving to cloud…', 'warn');
+  await saveStorage();
+  log('✓ All data cleared and saved to cloud.', 'warn');
+}
+
+// ── BOOT ──────────────────────────────────────────────────────────────────
+(async function boot() {
+  if (!localStorage.getItem('joblog_username')) {
+    const name = prompt('Welcome to Job Log Merger!\n\nEnter your name so your team can see who made changes:', '');
+    if (name && name.trim()) localStorage.setItem('joblog_username', name.trim());
+  }
+
+  const cfg = localStorage.getItem(LS_CONFIG);
+  if (cfg) {
+    try {
+      const { url, key } = JSON.parse(cfg);
+      SUPA_URL = url; SUPA_KEY = key;
+      // Pre-fill settings bar
+      document.getElementById('sbApiKey').value = url;
+      document.getElementById('sbBinId').value  = key;
+      // Auto-hide since already configured
+      document.getElementById('sbFields').style.display = 'none';
+      document.getElementById('sbToggleBtn').textContent = '⚙ Show Settings';
+      setSyncStatus('warn', 'Connecting to Supabase…');
+      initSupabase(url, key);
+      await loadStorage();
+    } catch(e) {
+      setSyncStatus('err', 'Config error — check your Supabase URL and Anon Key above');
+    }
+  } else {
+    setSyncStatus('off', 'Not connected — enter your Supabase URL and Anon Key above and click Save & Connect');
+  }
+  if (allRecords.length) document.getElementById('btnExport').disabled = false;
+})();
+</script>
+</body>
+</html>
