@@ -876,42 +876,13 @@ async function readExcelFile(file) {
         if (isExport) {
           log(`  Detected merger export format in ${file.name} — reading All Records sheet`, 'info');
 
-          // ── Build a vertical override map from Master Customer List ──
-          // This captures any edits the user made directly in Excel to the Master Customer List sheet
-          // Key: "CustomerName|||City" → vertical string
-          const vertOverride = {};
-          if (wb.SheetNames.includes('Master Customer List')) {
-            const custRows = XLSX.utils.sheet_to_json(wb.Sheets['Master Customer List'], { defval: '' });
-            for (const cr of custRows) {
-              const name = String(cr['Customer Name'] || '').trim();
-              const city = String(cr['Location / City'] || '').trim();
-              const vert = String(cr['Vertical / Industry'] || '').trim();
-              if (name && vert) {
-                // Store by name+city for precise match, and by name alone as fallback
-                vertOverride[name + '|||' + city] = vert;
-                // Only set the name-only fallback if all cities agree on same vertical
-                if (vertOverride['__name__' + name] === undefined) {
-                  vertOverride['__name__' + name] = vert;
-                } else if (vertOverride['__name__' + name] !== vert) {
-                  vertOverride['__name__' + name] = null; // conflict — don't use name-only fallback
-                }
-              }
-            }
-            const overrideCount = Object.keys(vertOverride).filter(k => !k.startsWith('__name__')).length;
-            log(`  Loaded ${overrideCount} vertical overrides from Master Customer List`, 'info');
-          }
-
+          // All Records is the single source of truth — read it directly, no overrides
           const rows = XLSX.utils.sheet_to_json(wb.Sheets['All Records'], { defval: '' });
           log(`  Sheet: "All Records" in ${file.name} (${rows.length} rows)`, 'info');
           for (const row of rows) {
-            const rec = parseExportRow(row, file.name, vertOverride);
+            const rec = parseExportRow(row, file.name);
             if (rec) records.push(rec);
           }
-
-          // Log how many records had their vertical updated from the Master Customer List
-          const updated = records.filter(r => r._vertOverridden).length;
-          if (updated > 0) log(`  ✓ Applied vertical overrides to ${updated} records from Master Customer List edits`, 'ok');
-          records.forEach(r => delete r._vertOverridden);
         } else {
           // ── Original source file — use tab-name detection as before ──
           for (const sheetName of wb.SheetNames) {
@@ -944,32 +915,17 @@ async function readExcelFile(file) {
 //          Vertical / Industry | Product Type | Quote # | Job # | Date |
 //          PIC | Status | Price ($) | Final Price ($) | Year | Month |
 //          Source Sheet | Source File | Duplicate / Location Flag | Comments
-function parseExportRow(row, fileName, vertOverride) {
+function parseExportRow(row, fileName) {
   const custName = row['Customer / Job Name'];
   if (!custName || String(custName).trim() === '') return null;
 
   const customer = String(custName).trim();
   const recType = String(row['Record Type'] || '').trim() || 'Quote';
-  const city = String(row['Location / City'] || '').trim();
 
-  // Priority: Master Customer List edit (name+city) > Master Customer List edit (name only) > All Records value > auto-tag
+  // All Records is the source of truth — use the vertical exactly as saved there
+  // Fall back to auto-tag only if the field is completely empty
   const savedVertical = String(row['Vertical / Industry'] || '').trim();
-  let vertical = savedVertical || getVertical(customer);
-  let overridden = false;
-
-  if (vertOverride) {
-    const preciseKey = customer + '|||' + city;
-    const nameKey = '__name__' + customer;
-    if (vertOverride[preciseKey]) {
-      // Precise name+city match from Master Customer List
-      if (vertOverride[preciseKey] !== savedVertical) overridden = true;
-      vertical = vertOverride[preciseKey];
-    } else if (vertOverride[nameKey]) {
-      // All locations for this customer have the same vertical in Master Customer List
-      if (vertOverride[nameKey] !== savedVertical) overridden = true;
-      vertical = vertOverride[nameKey];
-    }
-  }
+  const vertical = savedVertical || getVertical(customer);
 
   let dateStr = '';
   const dateRaw = row['Date'];
@@ -1002,8 +958,7 @@ function parseExportRow(row, fileName, vertOverride) {
     Source_Sheet: String(row['Source Sheet'] || '').trim(),
     Source_File: fileName,
     Comments: String(row['Comments'] || '').slice(0, 200),
-    Duplicate_Flag: '',
-    _vertOverridden: overridden
+    Duplicate_Flag: ''
   };
 }
 
