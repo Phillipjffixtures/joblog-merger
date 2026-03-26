@@ -1082,6 +1082,19 @@ function updateUI() {
      'hTotalRec','hTotalCust','hFiles'].forEach(id => {
       const el = document.getElementById(id); if (el) el.textContent = '0';
     });
+    // Also reset all breakdown tables to empty state
+    const emptyHtml = (icon, msg) =>
+      `<div class="empty-state"><div class="empty-state-icon">${icon}</div><div class="empty-state-text">${msg}</div></div>`;
+    document.getElementById('vertTable').innerHTML    = emptyHtml('📊','Process files to see breakdown');
+    document.getElementById('prodTable').innerHTML    = emptyHtml('📦','Process files to see breakdown');
+    document.getElementById('yoyTable').innerHTML     = emptyHtml('📅','Process files to see year-over-year data');
+    document.getElementById('yoyProdTable').innerHTML = emptyHtml('📦','Process files to see product year-over-year data');
+    document.getElementById('editTableWrap').innerHTML =
+      `<div class="empty-state" style="padding:32px">
+        <div class="empty-state-icon" style="font-size:32px;opacity:0.4">🔍</div>
+        <div class="empty-state-text">Process files first, then search here to edit any record's vertical</div>
+      </div>`;
+    document.getElementById('editMatchCount').textContent = '';
     return;
   }
 
